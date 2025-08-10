@@ -299,10 +299,10 @@ export class BrowserPreview extends Disposable {
 			}
 			const file = address.substring(hostString.length);
 			await this._webviewComm.goToFile(file, true, connection);
-		} catch (e) {
-			await this._handleOpenBrowser(address);
-		}
-	}
+               } catch (e) {
+                       await this._webviewComm.goToExternalAddress(address);
+               }
+       }
 
 	/**
 	 * Set the panel title accordingly, given the title and pathname given

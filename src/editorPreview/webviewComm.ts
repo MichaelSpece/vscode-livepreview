@@ -427,11 +427,42 @@ export class WebviewComm extends Disposable {
 
 		const page = response.address;
 		if (page != undefined) {
-			await this.goToFile(page.path, false, page.connection);
+				await this.goToFile(page.path, false, page.connection);
 		}
 
 		for (const action of response.actions) {
-			this.handleNavAction(action);
+				this.handleNavAction(action);
 		}
+	}
+
+	/**
+	* @description navigate the preview to an arbitrary address by directly embedding it.
+	* @param {string} httpURL the full address to load in the iframe.
+	*/
+	public async goToExternalAddress(httpURL: string): Promise<void> {
+			this._panel.webview.html = this._getExternalHtml(httpURL);
+			this.currentAddress = httpURL;
+			this._panel.title = httpURL;
+	}
+
+	/**
+	* @description generate minimal HTML for displaying an external address in an iframe.
+	* @param {string} httpURL the address to display.
+	* @returns {string} the html to load in the webview.
+	*/
+	private _getExternalHtml(httpURL: string): string {
+			return `<!DOCTYPE html>
+			<html lang="en">
+					<head>
+							<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+							<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; frame-src *;">
+							<meta name="viewport" content="width=device-width, initial-scale=1.0">
+							<style>html, body, iframe { height:100%; width:100%; margin:0; padding:0; border:0; }</style>
+							<title>${INIT_PANEL_TITLE}</title>
+					</head>
+					<body>
+							<iframe id="hostedContent" src="${httpURL}"></iframe>
+					</body>
+			</html>`;
 	}
 }
