@@ -68,6 +68,18 @@ export class ContentLoader extends Disposable {
 	}
 
 	/**
+	 * Replaces &, <, >, ", and ' with HTML entities.
+	 */
+	private _escapeHTML(input: string): string {
+		return input
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
+	/**
 	 * @description reset the list of served files; served files are used to watch changes for when being changed in the editor.
 	 */
 	public resetServedFiles(): void {
@@ -112,7 +124,7 @@ export class ContentLoader extends Disposable {
 		*/
 		this._reporter.sendTelemetryEvent('server.pageDoesNotExist');
 		const fileNotFound = vscode.l10n.t('File not found');
-		const relativePathFormatted = `<b>"${relativePath}"</b>`;
+		const relativePathFormatted = `<b>"${this._escapeHTML(relativePath)}"</b>`;
 		const fileNotFoundMsg = vscode.l10n.t(
 			'The file {0} cannot be found. It may have been moved, edited, or deleted.',
 			relativePathFormatted
@@ -205,15 +217,15 @@ export class ContentLoader extends Disposable {
 
 			if (fileStats.isDirectory()) {
 				dirEntries.push({
-					LinkSrc: relativeFileWithChild,
-					LinkName: childFile,
+					LinkSrc: encodeURI(relativeFileWithChild),
+					LinkName: this._escapeHTML(childFile),
 					DateTime: modifiedDateTimeString,
 				});
 			} else {
 				const fileSize = FormatFileSize(fileStats.size);
 				fileEntries.push({
-					LinkSrc: relativeFileWithChild,
-					LinkName: childFile,
+					LinkSrc: encodeURI(relativeFileWithChild),
+					LinkName: this._escapeHTML(childFile),
 					FileSize: fileSize,
 					DateTime: modifiedDateTimeString,
 				});
@@ -242,7 +254,7 @@ export class ContentLoader extends Disposable {
 				</tr>\n`)
 		);
 
-		const indexOfTitlePath = vscode.l10n.t('Index of {0}', titlePath);
+		const indexOfTitlePath = vscode.l10n.t('Index of {0}', this._escapeHTML(titlePath));
 		const name = vscode.l10n.t('Name');
 		const size = vscode.l10n.t('Size');
 		const dateModified = vscode.l10n.t('Date Modified');
