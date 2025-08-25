@@ -107,12 +107,21 @@ export class WebviewComm extends Disposable {
 	 * @param {boolean} updateHistory whether or not to update the history from this call.
 	 */
 	public async goToFile(
-		URLExt: string,
-		updateHistory = true,
-		connection: Connection = this.currentConnection
+			URLExt: string,
+			updateHistory = true,
+			connection: Connection = this.currentConnection
 	): Promise<void> {
-		await this._setHtml(this._panel.webview, URLExt, updateHistory, connection);
-		this.currentAddress = URLExt;
+			if (/^https?:\/\//i.test(URLExt)) {
+					const response = await fetch(URLExt);
+					const httpContent = (await response.text()).replace(/`/g, '\\`');
+					this._panel.webview.html = this._getExternalHtml(httpContent);
+					this.currentAddress = URLExt;
+					this._panel.title = URLExt;
+					return;
+			}
+
+			await this._setHtml(this._panel.webview, URLExt, updateHistory, connection);
+			this.currentAddress = URLExt;
 	}
 
 	/**
@@ -126,17 +135,19 @@ export class WebviewComm extends Disposable {
 		URLExt: string,
 		updateHistory: boolean,
 		connection: Connection
-	): Promise<void> {
-		this.currentConnection = connection;
-		const httpHost = await this.resolveHost(connection);
-		const url = await this.constructAddress(URLExt, connection, httpHost);
-		const wsURI = await this._resolveWsHost(connection);
-		this._panel.webview.html = this._getHtmlForWebview(
-			webview,
-			url,
-			`ws://${wsURI.authority}${wsURI.path}`,
-			`${httpHost.scheme}://${httpHost.authority}`
-		);
+		): Promise<void> {
+			this.currentConnection = connection;
+			const httpHost = await this.resolveHost(connection);
+			const url = await this.constructAddress(URLExt, connection, httpHost);
+			const wsURI = await this._resolveWsHost(connection);
+			const response = await fetch(url);
+			const httpContent = (await response.text()).replace(/`/g, '\\`');
+			this._panel.webview.html = this._getHtmlForWebview(
+					webview,
+					httpContent,
+					`ws://${wsURI.authority}${wsURI.path}`,
+					`${httpHost.scheme}://${httpHost.authority}`
+			);
 
 		// If we can't rely on inline script to update panel title,
 		// then set panel title manually
@@ -157,19 +168,19 @@ export class WebviewComm extends Disposable {
 	}
 
 	/**
-	 * @description generate the HTML to load in the webview; this will contain the full-page iframe with the hosted content,
-	 *  in addition to the top navigation bar.
-	 * @param {vscode.Webview} webview the webview instance (to create sufficient webview URIs)/
-	 * @param {string} httpURL the address to navigate to in the iframe.
-	 * @param {string} wsServerAddr the address of the WebSocket server.
-	 * @param {string} httpServerAddr the address of the HTTP server.
-	 * @returns {string} the html to load in the webview.
-	 */
+	* @description generate the HTML to load in the webview; this will contain the embedded content,
+	*  in addition to the top navigation bar.
+	* @param {vscode.Webview} webview the webview instance (to create sufficient webview URIs)/
+	* @param {string} httpContent the fetched HTML content to display.
+	* @param {string} wsServerAddr the address of the WebSocket server.
+	* @param {string} httpServerAddr the address of the HTTP server.
+	* @returns {string} the html to load in the webview.
+	*/
 	private _getHtmlForWebview(
-		webview: vscode.Webview,
-		httpURL: string,
-		wsServerAddr: string,
-		httpServerAddr: string
+			webview: vscode.Webview,
+			httpContent: string,
+			wsServerAddr: string,
+			httpServerAddr: string
 	): string {
 		// Local path to main script run in the webview
 		const scriptPathOnDisk = vscode.Uri.joinPath(
@@ -221,12 +232,11 @@ export class WebviewComm extends Disposable {
 					and only allow scripts that have a specific nonce.
 				-->
 				<meta http-equiv="Content-Security-Policy" content="
-					default-src 'none';
-					connect-src ${wsServerAddr};
-					font-src ${this._panel.webview.cspSource};
-					style-src ${this._panel.webview.cspSource};
-					script-src 'nonce-${nonce}';
-					frame-src ${httpServerAddr};
+						default-src 'none';
+						connect-src ${wsServerAddr};
+						font-src ${this._panel.webview.cspSource};
+						style-src ${this._panel.webview.cspSource};
+						script-src 'nonce-${nonce}';
 				">
 				<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -311,7 +321,7 @@ export class WebviewComm extends Disposable {
 					</div>
 				</div>
 				<div class="content">
-					<iframe id="hostedContent" src="${httpURL}"></iframe>
+					<div id="hostedContent">${httpContent}</div>
 				</div>
 			</div>
 			<div id="link-preview"></div>
@@ -436,33 +446,23 @@ export class WebviewComm extends Disposable {
 	}
 
 	/**
-	* @description navigate the preview to an arbitrary address by directly embedding it.
-	* @param {string} httpURL the full address to load in the iframe.
-	*/
-	public async goToExternalAddress(httpURL: string): Promise<void> {
-			this._panel.webview.html = this._getExternalHtml(httpURL);
-			this.currentAddress = httpURL;
-			this._panel.title = httpURL;
-	}
-
-	/**
-	* @description generate minimal HTML for displaying an external address in an iframe.
-	* @param {string} httpURL the address to display.
+	* @description generate minimal HTML for displaying an external address inline.
+	* @param {string} httpContent the fetched HTML content to display.
 	* @returns {string} the html to load in the webview.
 	*/
-	private _getExternalHtml(httpURL: string): string {
-			return `<!DOCTYPE html>
-			<html lang="en">
-					<head>
-							<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
-							<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; frame-src *;">
-							<meta name="viewport" content="width=device-width, initial-scale=1.0">
-							<style>html, body, iframe { height:100%; width:100%; margin:0; padding:0; border:0; }</style>
-							<title>${INIT_PANEL_TITLE}</title>
-					</head>
-					<body>
-							<iframe id="hostedContent" src="${httpURL}"></iframe>
-					</body>
-			</html>`;
+	private _getExternalHtml(httpContent: string): string {
+					return `<!DOCTYPE html>
+					<html lang="en">
+									<head>
+													<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+													<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval';">
+													<meta name="viewport" content="width=device-width, initial-scale=1.0">
+													<style>html, body { height:100%; width:100%; margin:0; padding:0; border:0; }</style>
+													<title>${INIT_PANEL_TITLE}</title>
+									</head>
+									<body>
+													<div id="hostedContent">${httpContent}</div>
+									</body>
+					</html>`;
 	}
 }
