@@ -76,97 +76,99 @@ export class WebviewComm extends Disposable {
 	}
 
 	/**
-	 * @param {string} URLExt the pathname to construct the address from.
+	 * @param {string} url the pathname to construct the address from.
 	 * @param {string} hostURI the (optional) URI of the host; alternatively, the function will manually generate the connection manager's HTTP URI if not provided with it initially.
 	 * @returns {Promise<string>} a promise for the address for the content.
 	 */
 	public async constructAddress(
-		URLExt: string,
-		connection: Connection = this.currentConnection,
-		hostURI?: vscode.Uri,
-		windowId?: number | undefined,
+			url: string,
+			connection: Connection = this.currentConnection,
+			hostURI?: vscode.Uri,
+			windowId?: number | undefined,
 	): Promise<string> {
-		if (URLExt.length > 0 && URLExt[0] == '/') {
-			URLExt = URLExt.substring(1);
-		}
+			if (url.length > 0 && url[0] == '/') {
+					url = url.substring(1);
+			}
 
-		if (!hostURI) {
-			hostURI = await this.resolveHost(connection);
-		}
+			if (!hostURI) {
+					hostURI = await this.resolveHost(connection);
+			}
 
-		return `${hostURI.toString()}${URLExt}`;
+			return `${hostURI.toString()}${url}`;
 	}
 
 	/**
 	 * @description go to a file in the embeded preview
-	 * @param {string} URLExt the pathname to navigate to
+	 * @param {string} url the pathname or absolute URL to navigate to
 	 *  can be:
 	 * 1. /relative-pathname OR (blank string) for root
 	 * 2. /c:/absolute-pathname
 	 * 3. /unc/absolute-unc-pathname
+	 * 4. http(s)://external-url
 	 * @param {boolean} updateHistory whether or not to update the history from this call.
 	 */
 	public async goToFile(
-			URLExt: string,
-			updateHistory = true,
-			connection: Connection = this.currentConnection
+					url: string,
+					updateHistory = true,
+					connection: Connection = this.currentConnection
 	): Promise<void> {
-			if (/^https?:\/\//i.test(URLExt)) {
-					const response = await fetch(URLExt);
-					const httpContent = (await response.text()).replace(/`/g, '\\`');
-					this._panel.webview.html = this._getExternalHtml(httpContent);
-					this.currentAddress = URLExt;
-					this._panel.title = URLExt;
-					return;
-			}
+					if (/^https?:\/\//i.test(url)) {
+									const response = await fetch(url, { redirect: 'follow' });
+									const finalUrl = response.url || url;
+									const httpContent = (await response.text()).replace(/`/g, '\\`');
+									this._panel.webview.html = this._getExternalHtml(httpContent, finalUrl);
+									this.currentAddress = finalUrl;
+									this._panel.title = finalUrl;
+									return;
+					}
 
-			await this._setHtml(this._panel.webview, URLExt, updateHistory, connection);
-			this.currentAddress = URLExt;
+					await this._setHtml(this._panel.webview, url, updateHistory, connection);
+					this.currentAddress = url;
 	}
 
 	/**
 	 * @description set the webivew's HTML to show embedded preview content.
 	 * @param {vscode.Webview} webview the webview to set the HTML.
-	 * @param {string} URLExt the pathname appended to the host to navigate the preview to.
+	 * @param {string} url the pathname appended to the host to navigate the preview to.
 	 * @param {boolean} updateHistory whether or not to update the history from this call.
 	 */
 	private async _setHtml(
-		webview: vscode.Webview,
-		URLExt: string,
-		updateHistory: boolean,
-		connection: Connection
-		): Promise<void> {
-			this.currentConnection = connection;
-			const httpHost = await this.resolveHost(connection);
-			const url = await this.constructAddress(URLExt, connection, httpHost);
-			const wsURI = await this._resolveWsHost(connection);
-			const response = await fetch(url);
-			const httpContent = (await response.text()).replace(/`/g, '\\`');
-			this._panel.webview.html = this._getHtmlForWebview(
-					webview,
-					httpContent,
-					`ws://${wsURI.authority}${wsURI.path}`,
-					`${httpHost.scheme}://${httpHost.authority}`
-			);
+			webview: vscode.Webview,
+			url: string,
+			updateHistory: boolean,
+			connection: Connection
+			): Promise<void> {
+					this.currentConnection = connection;
+					const httpHost = await this.resolveHost(connection);
+					const fullUrl = await this.constructAddress(url, connection, httpHost);
+					const wsURI = await this._resolveWsHost(connection);
+					const response = await fetch(fullUrl);
+					const httpContent = (await response.text()).replace(/`/g, '\\`');
+					this._panel.webview.html = this._getHtmlForWebview(
+									webview,
+									httpContent,
+									`ws://${wsURI.authority}${wsURI.path}`,
+									`${httpHost.scheme}://${httpHost.authority}`
+					);
 
-		// If we can't rely on inline script to update panel title,
-		// then set panel title manually
-		if (!isFileInjectable(URLExt)) {
-			this._onPanelTitleChange.fire({
-				title: '',
-				pathname: URLExt,
-				connection: connection,
-			});
-			this._panel.webview.postMessage({
-				command: 'set-url',
-				text: JSON.stringify({ fullPath: url, pathname: URLExt }),
-			});
-		}
-		if (updateHistory) {
-			this.handleNewPageLoad(URLExt, connection);
-		}
+			// If we can't rely on inline script to update panel title,
+			// then set panel title manually
+			if (!isFileInjectable(url)) {
+					this._onPanelTitleChange.fire({
+							title: '',
+							pathname: url,
+							connection: connection,
+					});
+					this._panel.webview.postMessage({
+							command: 'set-url',
+							text: JSON.stringify({ fullPath: fullUrl, pathname: url }),
+					});
+			}
+			if (updateHistory) {
+					this.handleNewPageLoad(url, connection);
+			}
 	}
-
+	
 	/**
 	* @description generate the HTML to load in the webview; this will contain the embedded content,
 	*  in addition to the top navigation bar.
@@ -448,21 +450,24 @@ export class WebviewComm extends Disposable {
 	/**
 	* @description generate minimal HTML for displaying an external address inline.
 	* @param {string} httpContent the fetched HTML content to display.
+	* @param {string | undefined} baseHref optional base href for resolving relative links.
 	* @returns {string} the html to load in the webview.
 	*/
-	private _getExternalHtml(httpContent: string): string {
-					return `<!DOCTYPE html>
-					<html lang="en">
-									<head>
-													<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
-													<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval';">
-													<meta name="viewport" content="width=device-width, initial-scale=1.0">
-													<style>html, body { height:100%; width:100%; margin:0; padding:0; border:0; }</style>
-													<title>${INIT_PANEL_TITLE}</title>
-									</head>
-									<body>
-													<div id="hostedContent">${httpContent}</div>
-									</body>
-					</html>`;
+	private _getExternalHtml(httpContent: string, baseHref?: string): string {
+									const baseTag = baseHref ? `<base href="${baseHref}">` : '';
+									return `<!DOCTYPE html>
+									<html lang="en">
+																	<head>
+																									${baseTag}
+																									<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+																									<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval';">
+																									<meta name="viewport" content="width=device-width, initial-scale=1.0">
+																									<style>html, body { height:100%; width:100%; margin:0; padding:0; border:0; }</style>
+																									<title>${INIT_PANEL_TITLE}</title>
+																	</head>
+																	<body>
+																									<div id="hostedContent">${httpContent}</div>
+																	</body>
+									</html>`;
 	}
 }
