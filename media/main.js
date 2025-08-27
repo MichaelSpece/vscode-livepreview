@@ -1,8 +1,3 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 /* eslint-env browser */
 /* global acquireVsCodeApi, WS_URL */
@@ -320,9 +315,10 @@
 				break;
 			}
 			// from child iframe
-			case 'open-external-link': {
+			case 'go-to-file': {
 				vscode.postMessage({
-					command: 'open-browser'
+					command: 'go-to-file',
+					text: message.text
 				});
 				break;
 			}
@@ -332,15 +328,6 @@
 					command: 'console',
 					text: message.text,
 				});
-				break;
-			}
-			// from child iframe
-			case 'perform-url-check': {
-				const sendData = {
-					command: 'urlCheck',
-					url: message.text,
-				};
-				connection.send(JSON.stringify(sendData));
 				break;
 			}
 			// from child iframe

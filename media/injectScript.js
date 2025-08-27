@@ -1,7 +1,3 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 /* eslint-env browser */
 
@@ -53,8 +49,8 @@ function onLoad() {
 
 	const links = document.getElementsByTagName('a');
 	for (const link of links) {
-		// In embedded preview, all link clicks must be checked to see if the target page can be injected with this file's script.
-		link.addEventListener('click', (e) => handleLinkClick(e.target.href));
+		// In embedded preview, intercept link clicks so navigation is handled by the extension.
+		link.addEventListener('click', (e) => handleLinkClick(e));
 		link.addEventListener('mouseenter', (e) =>
 			handleLinkHoverStart(e.target.href)
 		);
@@ -210,10 +206,7 @@ function handleMessage(event) {
 			break;
 		}
 		default: {
-			if (
-				event.data.command != 'perform-url-check' &&
-				event.data.command != 'update-path'
-			) {
+			if (event.data.command != 'update-path') {
 				postParentMessage(event.data);
 			}
 		}
@@ -287,20 +280,17 @@ function postParentMessage(data) {
 /**
  * @description Monitor link clicks for non-injectable files (files that cannot be injected with this script) or for external links.
  * Primarily for embedded previews.
- * @param {string} linkTarget
+ * @param {MouseEvent} event
  */
-function handleLinkClick(linkTarget) {
-	const host = '${HTTP_URL}';
-	if (linkTarget && linkTarget != '' && !linkTarget.startsWith('javascript:')) {
-		if (!linkTarget.startsWith(host)) {
-			// The embedded preview does not support external sites; let the extension know that an external link has been
-			// opened in the embedded preview; this will open the modal to ask the user to navigate in an external browser
-			// and will force the embedded preview back to the previous page.
-			postParentMessage({ command: 'open-external-link', text: linkTarget });
-		} else {
-			// Check all local URLs to make sure to catch pages that won't be injectable
-			postParentMessage({ command: 'perform-url-check', text: linkTarget });
-		}
+function handleLinkClick(event) {
+	const linkTarget = event.target.href;
+	if (
+		linkTarget &&
+		linkTarget !== '' &&
+		!linkTarget.startsWith('javascript:')
+	) {
+		event.preventDefault();
+		postParentMessage({ command: 'go-to-file', text: linkTarget });
 	}
 }
 

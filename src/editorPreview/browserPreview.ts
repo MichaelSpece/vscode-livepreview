@@ -1,9 +1,3 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
-import { OPEN_EXTERNALLY } from '../utils/constants';
 import * as vscode from 'vscode';
 import { Disposable } from '../utils/dispose';
 import { PathUtil } from '../utils/pathUtil';
@@ -16,7 +10,6 @@ import * as path from 'path';
 import { URL } from 'url';
 import { Connection } from '../connectionInfo/connection';
 import { IOpenFileOptions } from '../manager';
-import { ExternalBrowserUtils } from '../utils/externalBrowserUtils';
 
 /**
  * @description the embedded preview object, containing the webview panel showing the preview.
@@ -242,37 +235,6 @@ export class BrowserPreview extends Disposable {
 			},
 			previewType,
 		});
-	}
-
-	/**
-	 * Open in external browser. This also warns the user in the case where the URL is external to the hosted content.
-	 * @param {string} givenURL the (full) URL to open up in the external browser.
-	 */
-	private async _handleOpenBrowser(givenURL: string): Promise<void> {
-		vscode.window
-			.showInformationMessage(
-				vscode.l10n.t(
-					'Externally hosted links are not supported in the embedded preview. Do you want to open {0} in an external browser?',
-					givenURL
-				),
-				{ modal: true },
-				OPEN_EXTERNALLY
-			)
-			.then((selection: vscode.MessageItem | undefined) => {
-				if (selection) {
-					if (selection === OPEN_EXTERNALLY) {
-						ExternalBrowserUtils.openInBrowser(givenURL, SettingUtil.GetConfig().customExternalBrowser);
-					}
-				}
-			});
-		// navigate back to the previous page, since the page it went to is invalid
-		await this._webviewComm.reloadWebview();
-
-
-		/* __GDPR__
-			"preview.openExternalBrowser" : {}
-		*/
-		this._reporter.sendTelemetryEvent('preview.openExternalBrowser');
 	}
 
 	/**
