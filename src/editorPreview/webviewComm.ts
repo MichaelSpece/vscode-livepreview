@@ -115,7 +115,7 @@ export class WebviewComm extends Disposable {
 					if (/^https?:\/\//i.test(url)) {
 									const response = await fetch(url, { redirect: 'follow' });
 									const finalUrl = response.url || url;
-									const httpContent = (await response.text()).replace(/`/g, '\\`');
+									const httpContent = await response.text();
 									this._panel.webview.html = this._getExternalHtml(httpContent, finalUrl);
 									this.currentAddress = finalUrl;
 									this._panel.title = finalUrl;
@@ -143,7 +143,7 @@ export class WebviewComm extends Disposable {
 					const fullUrl = await this.constructAddress(url, connection, httpHost);
 					const wsURI = await this._resolveWsHost(connection);
 					const response = await fetch(fullUrl);
-					const httpContent = (await response.text()).replace(/`/g, '\\`');
+					const httpContent = await response.text();
 					this._panel.webview.html = this._getHtmlForWebview(
 									webview,
 									httpContent,
